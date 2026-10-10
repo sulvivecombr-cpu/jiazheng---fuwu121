@@ -1,0 +1,33 @@
+# Base44 development environment for JOB (service marketplace).
+# Runs the app from the cloned source: Express API + Vite dev server (middleware mode)
+# on a single origin (port 3000), with SQLite storage on a named volume.
+services:
+  web:
+    image: node:22-bookworm-slim
+    working_dir: /app
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      - NODE_ENV=development
+      # Platform-provided: lets the Vite dev server accept the preview host.
+      - __VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS
+    env_file:
+      - /run/base44/app.env   # platform secrets (JWT_SECRET) — last, always wins
+    volumes:
+      - .:/app
+      - web_node_modules:/app/node_modules
+      - job_data:/app/data
+    command: sh -ec "npm install --no-audit --no-fund --loglevel=error && exec ./node_modules/.bin/nodemon --watch server server/index.js"
+    restart: on-failure
+    healthcheck:
+      # Checks BOTH components (API and frontend/SPA) and reports which failed.
+      test: ["CMD", "node", "-e", "Promise.all([fetch('http://127.0.0.1:3000/api/health'),fetch('http://127.0.0.1:3000/')]).then(async rs=>{const c=rs.map(r=>r.status);if(c.some(x=>x!==200)){console.log('unhealthy, status codes:',c.join(','));process.exit(1)}}).catch(e=>{console.log('unhealthy:',String(e));process.exit(1)})"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+
+volumes:
+  web_node_modules:
+  job_data:
